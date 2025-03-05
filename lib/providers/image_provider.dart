@@ -32,6 +32,10 @@ class ImageOverlayProvider extends ChangeNotifier {
   double _cameraScale = 1.0;
   double _cameraRotation = 0.0;
   
+  // Boundary constants to prevent losing the view
+  static const double _maxCameraDistance = 300.0;  // Maximum distance from center
+  static const double _movementDamping = 0.4;      // Movement reduction factor
+  
   // Getters
   OverlayImage? get currentOverlay => _currentOverlay;
   List<Project> get savedProjects => List.unmodifiable(_savedProjects);
@@ -51,70 +55,27 @@ class ImageOverlayProvider extends ChangeNotifier {
   }
 
   void updateCameraPosition(Offset newPosition) {
-    if (newPosition == _cameraPosition) return;
+    if (_manipulationMode != ManipulationMode.camera) return;
     
-    // Calculate the delta (how much the camera moved)
-    final delta = Offset(
-      newPosition.dx - _cameraPosition.dx,
-      newPosition.dy - _cameraPosition.dy
-    );
-    
-    // Use a consistent, small movement factor regardless of distance
-    // This makes the movement more predictable
-    final movementFactor = 0.5 / max(1.0, _cameraScale);
-    
-    // Calculate the new position with controlled movement
-    final adjustedDelta = Offset(
-      delta.dx * movementFactor,
-      delta.dy * movementFactor
-    );
-    
-    // Apply hard boundaries to prevent extreme positions
-    const maxDistance = 500.0;
-    
-    final proposedPosition = Offset(
-      _cameraPosition.dx + adjustedDelta.dx,
-      _cameraPosition.dy + adjustedDelta.dy
-    );
-    
-    // Restrict movement if exceeding boundaries
-    final distance = proposedPosition.distance;
-    if (distance > maxDistance) {
-      // Scale back to boundary
-      final ratio = maxDistance / distance;
-      _cameraPosition = Offset(
-        proposedPosition.dx * ratio,
-        proposedPosition.dy * ratio
-      );
-    } else {
-      _cameraPosition = proposedPosition;
-    }
-    
-    // Update the overlay image position by the same amount
-    if (_currentOverlay != null) {
-      _currentOverlay = _currentOverlay!.copyWith(
-        position: Offset(
-          _currentOverlay!.position.dx + adjustedDelta.dx,
-          _currentOverlay!.position.dy + adjustedDelta.dy
-        )
-      );
-    }
-    
+    // Update camera position only
+    _cameraPosition = newPosition;
     notifyListeners();
   }
 
   void updateCameraScale(double newScale) {
-    const double minScale = 0.1;
-    const double maxScale = 5.0;
+    if (_manipulationMode != ManipulationMode.camera) return;
     
-    if (newScale >= minScale && newScale <= maxScale && newScale != _cameraScale) {
-      _cameraScale = newScale;
-      notifyListeners();
-    }
+    // Apply strict limits to scale
+    const double minScale = 0.2;
+    const double maxScale = 3.0;
+    
+    // Enforce smaller scale range for better usability
+    _cameraScale = newScale.clamp(minScale, maxScale);
+    notifyListeners();
   }
 
   void updateCameraRotation(double newRotation) {
-    // Camera rotation is disabled, always keep at 0
+    // Camera rotation is disabled by design
     if (_cameraRotation != 0.0) {
       _cameraRotation = 0.0;
       notifyListeners();
@@ -139,6 +100,16 @@ class ImageOverlayProvider extends ChangeNotifier {
       shouldNotify = true;
     }
     
+    // Reset image to center with default scale when camera is reset
+    if (_currentOverlay != null) {
+      _currentOverlay = _currentOverlay!.copyWith(
+        position: Offset.zero,
+        scale: 0.3,
+        rotation: 0.0
+      );
+      shouldNotify = true;
+    }
+    
     if (shouldNotify) {
       notifyListeners();
     }
@@ -159,12 +130,12 @@ class ImageOverlayProvider extends ChangeNotifier {
         final File imageFile = File(image.path);
         final File savedFile = await imageFile.copy(savedPath);
         
-        // Replace existing overlay with new one
+        // Center the image initially
         _currentOverlay = OverlayImage(
           path: savedPath,
           imageFile: savedFile,
-          position: Offset.zero,
-          scale: 0.3,
+          position: Offset.zero,  // This will be center since we're using Transform.translate
+          scale: 0.3,  // Initial scale
         );
         
         // Reset camera position when loading a new image
@@ -186,25 +157,27 @@ class ImageOverlayProvider extends ChangeNotifier {
   }
 
   void updatePosition(Offset newPosition) {
-    if (_currentOverlay != null && newPosition != _currentOverlay!.position) {
-      _currentOverlay = _currentOverlay!.copyWith(position: newPosition);
+    if (_manipulationMode != ManipulationMode.image || _currentOverlay == null) return;
+    
+    _currentOverlay = _currentOverlay!.copyWith(position: newPosition);
+    notifyListeners();
+  }
+
+  void updateScale(double scaleFactor) {
+    if (_manipulationMode != ManipulationMode.image || _currentOverlay == null) return;
+    
+    final newScale = (_currentOverlay!.scale * scaleFactor).clamp(0.1, 5.0);
+    if (newScale != _currentOverlay!.scale) {
+      _currentOverlay = _currentOverlay!.copyWith(scale: newScale);
       notifyListeners();
     }
   }
 
-  void updateScale(double scaleFactor) {
-    if (_currentOverlay != null) {
-      final newScale = (_currentOverlay!.scale * scaleFactor).clamp(0.1, 5.0);
-      if (newScale != _currentOverlay!.scale) {
-        _currentOverlay = _currentOverlay!.copyWith(scale: newScale);
-        notifyListeners();
-      }
-    }
-  }
-
   void updateScaleDirectly(double newScale) {
-    if (_currentOverlay != null && newScale != _currentOverlay!.scale) {
-      _currentOverlay = _currentOverlay!.copyWith(scale: newScale);
+    if (_manipulationMode != ManipulationMode.image || _currentOverlay == null) return;
+    
+    if (newScale != _currentOverlay!.scale) {
+      _currentOverlay = _currentOverlay!.copyWith(scale: newScale.clamp(0.1, 5.0));
       notifyListeners();
     }
   }
@@ -220,7 +193,9 @@ class ImageOverlayProvider extends ChangeNotifier {
   }
 
   void updateRotationDirectly(double newRotation) {
-    if (_currentOverlay != null && newRotation != _currentOverlay!.rotation) {
+    if (_manipulationMode != ManipulationMode.image || _currentOverlay == null) return;
+    
+    if (newRotation != _currentOverlay!.rotation) {
       _currentOverlay = _currentOverlay!.copyWith(rotation: newRotation);
       notifyListeners();
     }
@@ -255,25 +230,14 @@ class ImageOverlayProvider extends ChangeNotifier {
   }
 
   void resetTransformations() {
-    // Reset the selected object (image or camera)
-    if (_manipulationMode == ManipulationMode.image) {
-      if (_currentOverlay != null) {
-        _currentOverlay = _currentOverlay!.reset();
-      }
-    } else {
-      resetCameraTransformations();
-    }
+    // Always reset camera position
+    resetCameraTransformations();
     
-    // Always center the image in the screen
-    if (_currentOverlay != null) {
-      // Use a fixed position since we don't have screen size here
-      _currentOverlay = _currentOverlay!.copyWith(
-        position: Offset.zero,
-        scale: 0.3
-      );
+    // If manipulating image, reset the image too
+    if (_manipulationMode == ManipulationMode.image && _currentOverlay != null) {
+      _currentOverlay = _currentOverlay!.reset();
+      notifyListeners();
     }
-    
-    notifyListeners();
   }
 
   void toggleGrid() {
@@ -319,6 +283,12 @@ class ImageOverlayProvider extends ChangeNotifier {
       
       if (await file.exists()) {
         _currentOverlay = overlayImage.copyWith();
+        
+        // Reset camera position when loading a project
+        _cameraPosition = Offset.zero;
+        _cameraScale = 1.0;
+        _cameraRotation = 0.0;
+        
         notifyListeners();
       } else {
         _logger.warning('Image file not found: ${overlayImage.path}');

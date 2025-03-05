@@ -38,18 +38,14 @@ class _ImageOverlayWidgetState extends State<ImageOverlayWidget> {
           _startPosition = overlay.position;
           _startRotation = overlay.rotation;
           _startScale = overlay.scale;
-          _startFocalPoint = details.focalPoint;
         },
         onScaleUpdate: (details) {
-          if (_startPosition == null || _startRotation == null || _startScale == null || _startFocalPoint == null) return;
+          if (_startPosition == null || _startRotation == null || _startScale == null) return;
 
           if (provider.manipulationMode == ManipulationMode.image) {
-            // Handle position update
-            final newPosition = Offset(
-              _startPosition!.dx + (details.focalPoint.dx - _startFocalPoint!.dx),
-              _startPosition!.dy + (details.focalPoint.dy - _startFocalPoint!.dy),
-            );
-            provider.updatePosition(newPosition);
+            // Calculate delta between current position and start position
+            final delta = details.focalPoint - details.localFocalPoint;
+            provider.updatePosition(delta);
             
             // Handle scale and rotation
             if (details.scale != 1.0) {
@@ -59,12 +55,9 @@ class _ImageOverlayWidgetState extends State<ImageOverlayWidget> {
               provider.updateRotationDirectly(_startRotation! + details.rotation);
             }
           } else {
-            // Camera mode
-            final newPosition = Offset(
-              provider.cameraPosition.dx + (details.focalPoint.dx - _startFocalPoint!.dx),
-              provider.cameraPosition.dy + (details.focalPoint.dy - _startFocalPoint!.dy),
-            );
-            provider.updateCameraPosition(newPosition);
+            // Camera mode - uses the improved damping and boundary checks
+            final delta = details.focalPoint - details.localFocalPoint;
+            provider.updateCameraPosition(provider.cameraPosition + delta);
             
             if (details.scale != 1.0) {
               provider.updateCameraScale(provider.cameraScale * details.scale);

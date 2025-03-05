@@ -70,7 +70,7 @@ class _CameraViewState extends State<CameraView> {
             child: Container(
               width: screenSize.width,
               height: screenSize.height,
-              color: Colors.black,
+              color: Colors.white, // Changed from Colors.black
               child: Transform.translate(
                 offset: imageProvider.cameraPosition,
                 child: Transform.scale(

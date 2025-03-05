@@ -71,7 +71,7 @@ class CameraProvider extends ChangeNotifier {
       _isInitialized = false;
     }
   }
-
+  
   void toggleCamera() async {
     // Prevent calls after disposal
     if (_isDisposed) return;
