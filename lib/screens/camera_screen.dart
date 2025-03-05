@@ -114,6 +114,16 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
               left: 0,
               right: 0,
               child: _buildAppBar(cameraProvider),
+              
+            ),
+            // Add this to your app bar or toolbar
+            IconButton(
+              icon: const Icon(Icons.restart_alt, color: Colors.white),
+              tooltip: 'Reset View',
+              onPressed: () {
+                final provider = context.read<ImageOverlayProvider>();
+                provider.resetTransformations();
+              },
             ),
           ],
         );

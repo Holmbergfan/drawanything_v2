@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:image_picker/image_picker.dart';
@@ -49,45 +50,58 @@ class ImageOverlayProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-void updateCameraPosition(Offset newPosition) {
-  if (newPosition != _cameraPosition) {
+  void updateCameraPosition(Offset newPosition) {
+    if (newPosition == _cameraPosition) return;
+    
     // Calculate the delta (how much the camera moved)
     final delta = Offset(
       newPosition.dx - _cameraPosition.dx,
       newPosition.dy - _cameraPosition.dy
     );
     
-    // Apply movement constraints based on scale
-    // The larger the scale, the more restricted the movement should be
-    final screenSize = MediaQuery.of(navigatorKey.currentContext!).size;
-    final maxMovement = screenSize.width * 0.8; // 80% of screen width as max movement limit
+    // Use a consistent, small movement factor regardless of distance
+    // This makes the movement more predictable
+    final movementFactor = 0.5 / max(1.0, _cameraScale);
     
-    // Scale down movement for higher zoom levels
-    final movementFactor = 1.0 / (_cameraScale.clamp(1.0, 5.0));
-    
-    // Apply constraints
-    final constrainedPosition = Offset(
-      _cameraPosition.dx + (delta.dx * movementFactor).clamp(-maxMovement, maxMovement),
-      _cameraPosition.dy + (delta.dy * movementFactor).clamp(-maxMovement, maxMovement)
+    // Calculate the new position with controlled movement
+    final adjustedDelta = Offset(
+      delta.dx * movementFactor,
+      delta.dy * movementFactor
     );
     
-    // Update the camera position with constrained values
-    _cameraPosition = constrainedPosition;
+    // Apply hard boundaries to prevent extreme positions
+    const maxDistance = 500.0;
     
-    // Also update the overlay image position if it exists
+    final proposedPosition = Offset(
+      _cameraPosition.dx + adjustedDelta.dx,
+      _cameraPosition.dy + adjustedDelta.dy
+    );
+    
+    // Restrict movement if exceeding boundaries
+    final distance = proposedPosition.distance;
+    if (distance > maxDistance) {
+      // Scale back to boundary
+      final ratio = maxDistance / distance;
+      _cameraPosition = Offset(
+        proposedPosition.dx * ratio,
+        proposedPosition.dy * ratio
+      );
+    } else {
+      _cameraPosition = proposedPosition;
+    }
+    
+    // Update the overlay image position by the same amount
     if (_currentOverlay != null) {
-      // Apply the same movement delta to the image
       _currentOverlay = _currentOverlay!.copyWith(
         position: Offset(
-          _currentOverlay!.position.dx + delta.dx * movementFactor,
-          _currentOverlay!.position.dy + delta.dy * movementFactor
+          _currentOverlay!.position.dx + adjustedDelta.dx,
+          _currentOverlay!.position.dy + adjustedDelta.dy
         )
       );
     }
     
     notifyListeners();
   }
-}
 
   void updateCameraScale(double newScale) {
     const double minScale = 0.1;
@@ -145,21 +159,18 @@ void updateCameraPosition(Offset newPosition) {
         final File imageFile = File(image.path);
         final File savedFile = await imageFile.copy(savedPath);
         
+        // Replace existing overlay with new one
         _currentOverlay = OverlayImage(
           path: savedPath,
           imageFile: savedFile,
-          position: Offset.zero,  // Start at center offset
-          scale: 0.5,  // A bit larger scale
-          opacity: 1.0,  // Full opacity to ensure visibility
+          position: Offset.zero,
+          scale: 0.3,
         );
         
-        // Make sure control panel is visible when image is picked
-        _isControlPanelVisible = true;
+        // Reset camera position when loading a new image
+        resetCameraTransformations();
         
         notifyListeners();
-        
-        // Debug log
-        _logger.info('Image picked and loaded: $savedPath');
       }
     } catch (e) {
       _logger.severe('Error picking image: $e');
@@ -193,7 +204,7 @@ void updateCameraPosition(Offset newPosition) {
 
   void updateScaleDirectly(double newScale) {
     if (_currentOverlay != null && newScale != _currentOverlay!.scale) {
-      _currentOverlay = _currentOverlay!.copyWith(scale: newScale.clamp(0.1, 5.0));
+      _currentOverlay = _currentOverlay!.copyWith(scale: newScale);
       notifyListeners();
     }
   }
@@ -244,14 +255,25 @@ void updateCameraPosition(Offset newPosition) {
   }
 
   void resetTransformations() {
+    // Reset the selected object (image or camera)
     if (_manipulationMode == ManipulationMode.image) {
       if (_currentOverlay != null) {
         _currentOverlay = _currentOverlay!.reset();
-        notifyListeners();
       }
     } else {
       resetCameraTransformations();
     }
+    
+    // Always center the image in the screen
+    if (_currentOverlay != null) {
+      // Use a fixed position since we don't have screen size here
+      _currentOverlay = _currentOverlay!.copyWith(
+        position: Offset.zero,
+        scale: 0.3
+      );
+    }
+    
+    notifyListeners();
   }
 
   void toggleGrid() {
