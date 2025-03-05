@@ -57,23 +57,26 @@ void updateCameraPosition(Offset newPosition) {
       newPosition.dy - _cameraPosition.dy
     );
     
+    // Apply movement constraints based on scale
+    // The larger the scale, the more restricted the movement should be
+    final screenSize = MediaQuery.of(navigatorKey.currentContext!).size;
+    final maxMovement = screenSize.width * 0.8; // 80% of screen width as max movement limit
+    
     // Scale down movement for higher zoom levels
-    final movementFactor = 1.0 / _cameraScale.clamp(1.0, 5.0);
+    final movementFactor = 1.0 / (_cameraScale.clamp(1.0, 5.0));
     
-    // Apply constraints - limit movement to a reasonable range
-    const maxMovement = 500.0; // Maximum movement in any direction
-    
-    // Calculate constrained position
+    // Apply constraints
     final constrainedPosition = Offset(
       _cameraPosition.dx + (delta.dx * movementFactor).clamp(-maxMovement, maxMovement),
       _cameraPosition.dy + (delta.dy * movementFactor).clamp(-maxMovement, maxMovement)
     );
     
-    // Update the camera position
+    // Update the camera position with constrained values
     _cameraPosition = constrainedPosition;
     
     // Also update the overlay image position if it exists
     if (_currentOverlay != null) {
+      // Apply the same movement delta to the image
       _currentOverlay = _currentOverlay!.copyWith(
         position: Offset(
           _currentOverlay!.position.dx + delta.dx * movementFactor,
