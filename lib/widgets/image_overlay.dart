@@ -1,3 +1,4 @@
+// lib/widgets/image_overlay.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/image_provider.dart';
@@ -37,14 +38,18 @@ class _ImageOverlayWidgetState extends State<ImageOverlayWidget> {
           _startPosition = overlay.position;
           _startRotation = overlay.rotation;
           _startScale = overlay.scale;
+          _startFocalPoint = details.focalPoint;
         },
         onScaleUpdate: (details) {
-          if (_startPosition == null || _startRotation == null || _startScale == null) return;
+          if (_startPosition == null || _startRotation == null || _startScale == null || _startFocalPoint == null) return;
 
           if (provider.manipulationMode == ManipulationMode.image) {
             // Handle position update
-            final delta = details.focalPoint - details.localFocalPoint;
-            provider.updatePosition(delta);
+            final newPosition = Offset(
+              _startPosition!.dx + (details.focalPoint.dx - _startFocalPoint!.dx),
+              _startPosition!.dy + (details.focalPoint.dy - _startFocalPoint!.dy),
+            );
+            provider.updatePosition(newPosition);
             
             // Handle scale and rotation
             if (details.scale != 1.0) {
@@ -55,8 +60,11 @@ class _ImageOverlayWidgetState extends State<ImageOverlayWidget> {
             }
           } else {
             // Camera mode
-            final delta = details.focalPoint - details.localFocalPoint;
-            provider.updateCameraPosition(provider.cameraPosition + delta);
+            final newPosition = Offset(
+              provider.cameraPosition.dx + (details.focalPoint.dx - _startFocalPoint!.dx),
+              provider.cameraPosition.dy + (details.focalPoint.dy - _startFocalPoint!.dy),
+            );
+            provider.updateCameraPosition(newPosition);
             
             if (details.scale != 1.0) {
               provider.updateCameraScale(provider.cameraScale * details.scale);
@@ -141,8 +149,7 @@ class _ImageOverlayWidgetState extends State<ImageOverlayWidget> {
   Offset? _startPosition;
   double? _startRotation;
   double? _startScale;
-
-  // Remove the unused _handlePanUpdate method and its implementation
+  Offset? _startFocalPoint; // Added this field to track the initial focal point
 }
 
 class GridPainter extends CustomPainter {
@@ -176,3 +183,6 @@ class GridPainter extends CustomPainter {
   @override
   bool shouldRepaint(GridPainter oldDelegate) => gridSize != oldDelegate.gridSize;
 }
+
+
+

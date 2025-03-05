@@ -49,12 +49,42 @@ class ImageOverlayProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateCameraPosition(Offset newPosition) {
-    if (newPosition != _cameraPosition) {
-      _cameraPosition = newPosition;
-      notifyListeners();
+void updateCameraPosition(Offset newPosition) {
+  if (newPosition != _cameraPosition) {
+    // Calculate the delta (how much the camera moved)
+    final delta = Offset(
+      newPosition.dx - _cameraPosition.dx,
+      newPosition.dy - _cameraPosition.dy
+    );
+    
+    // Scale down movement for higher zoom levels
+    final movementFactor = 1.0 / _cameraScale.clamp(1.0, 5.0);
+    
+    // Apply constraints - limit movement to a reasonable range
+    const maxMovement = 500.0; // Maximum movement in any direction
+    
+    // Calculate constrained position
+    final constrainedPosition = Offset(
+      _cameraPosition.dx + (delta.dx * movementFactor).clamp(-maxMovement, maxMovement),
+      _cameraPosition.dy + (delta.dy * movementFactor).clamp(-maxMovement, maxMovement)
+    );
+    
+    // Update the camera position
+    _cameraPosition = constrainedPosition;
+    
+    // Also update the overlay image position if it exists
+    if (_currentOverlay != null) {
+      _currentOverlay = _currentOverlay!.copyWith(
+        position: Offset(
+          _currentOverlay!.position.dx + delta.dx * movementFactor,
+          _currentOverlay!.position.dy + delta.dy * movementFactor
+        )
+      );
     }
+    
+    notifyListeners();
   }
+}
 
   void updateCameraScale(double newScale) {
     const double minScale = 0.1;
@@ -115,11 +145,18 @@ class ImageOverlayProvider extends ChangeNotifier {
         _currentOverlay = OverlayImage(
           path: savedPath,
           imageFile: savedFile,
-          position: Offset.zero,
-          scale: 0.3,
+          position: Offset.zero,  // Start at center offset
+          scale: 0.5,  // A bit larger scale
+          opacity: 1.0,  // Full opacity to ensure visibility
         );
         
+        // Make sure control panel is visible when image is picked
+        _isControlPanelVisible = true;
+        
         notifyListeners();
+        
+        // Debug log
+        _logger.info('Image picked and loaded: $savedPath');
       }
     } catch (e) {
       _logger.severe('Error picking image: $e');
@@ -153,7 +190,7 @@ class ImageOverlayProvider extends ChangeNotifier {
 
   void updateScaleDirectly(double newScale) {
     if (_currentOverlay != null && newScale != _currentOverlay!.scale) {
-      _currentOverlay = _currentOverlay!.copyWith(scale: newScale);
+      _currentOverlay = _currentOverlay!.copyWith(scale: newScale.clamp(0.1, 5.0));
       notifyListeners();
     }
   }
